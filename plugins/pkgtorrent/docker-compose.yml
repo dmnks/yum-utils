@@ -1,0 +1,26 @@
+version: '2'
+services:
+    tracker:
+        image: chihaya
+        command: --config example_config.yaml
+    server:
+        build: server/
+        volumes:
+            - ./server:/src:Z
+            - /tmp/pkgtorrent_repo:/var/www/html/yum:Z
+        hostname: server
+        stdin_open: true
+        tty: true
+        environment:
+            - TERM
+            - LANG
+    client:
+        build: client/
+        volumes:
+            - ./client:/src:z
+        hostname: client
+        stdin_open: true
+        tty: true
+        environment:
+            - TERM
+            - LANG

@@ -38,6 +38,69 @@ Part of yum-utils
 * yum install yum-plugin-pkgtorrent on clients
 * yum install pkgtorrentservice on yum mirror
 
+## Developing pkgtorrent
+
+You can set up a simple development environment with Docker Compose.
+
+First, you need to download and build the Chihaya Tracker image:
+```bash
+$ git clone https://github.com/chihaya/chihaya /path/to/repo
+$ docker build -t chihaya /path/to/repo
+```
+
+Second, you need to create a dummy repo in `/tmp/pkgtorrent_repo` on your host
+to be served by the server container:
+```bash
+$ mkdir /tmp/pkgtorrent_repo
+$ cp /path/to/pkg1 ... /tmp/pkgtorrent_repo
+$ createrepo /tmp/pkgtorrent_repo
+```
+
+Now you are ready to spin up the environment:
+```bash
+$ docker-compose up -d
+```
+
+That will run 3 containers in detached mode: the server, tracker and client.
+Both the server and client containers are running bash by default so you can
+attach to them with `docker attach` and run httpd and yum interactively.  They
+also have the WSGI and plugin scripts mounted from the host.
+
+For example, you can first insert a breakpoint somewhere:
+
+```python
+import pdb; pdb.set_trace()
+```
+
+Then you can attach to the server container and run httpd in debug mode:
+
+```bash
+$ docker attach pkgtorrent_server_1
+[root@server ~]$ httpd -X
+```
+
+Finally, you can attach to the client container (perhaps from another terminal)
+and run yum to install a package from the server repo (other repos are
+disabled):
+
+```bash
+$ docker attach pkgtorrent_client_1
+[root@client ~]$ yum install -y pkg1
+```
+
+Once the breakpoint is hit, the pdb shell will be launched inside the container
+and you can proceed as usual.  Note that if you prefer the fullscreen pudb over
+pdb, it is included in the server and client images as well.
+
+You can run as many client containers as you wish by using `docker-compose
+scale`.  For example, to spin up another client (e.g. to test peer-to-peer
+downloading), run:
+
+```bash
+$ docker-compose scale client=2
+$ docker attach pkgtorrent_client_2
+```
+
 ## How pkgtorrent works
 
 The client calculates which packages it wishes to download, then, in a
