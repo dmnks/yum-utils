@@ -176,10 +176,20 @@ class PackageCleanup(YumUtilBase):
         return results
 
     def _remove_dupes(self, newest=False):
-        """add older duplicate pkgs to be removed in the transaction"""
+        """add duplicate pkgs to be removed in the transaction,
+           return dupes excluded for dependencies"""
+
+        def depsof(txmbr):
+            """Return the installed pos required by txmbr."""
+            pos = set()
+            for req in txmbr.po.requires:
+                pos |= set(self.rpmdb.searchProvides(req))
+            return pos
+
         dupedict = self._find_installed_duplicates()
 
-        removedupes = []
+        # Find dupes
+        removedupes = set()
         for (name,dupelists) in dupedict.items():
             for dupelist in dupelists:
                 dupelist.sort()
@@ -188,10 +198,49 @@ class PackageCleanup(YumUtilBase):
                 else:
                     plist = dupelist[0:-1]
                 for lowpo in plist:
-                    removedupes.append(lowpo)
+                    removedupes.add(lowpo)
 
+        # Exclude any such dupes that have some installed package(s) upstream
+        # in a dependency chain, for example
+        #   * foo requires bar, where only bar is a dupe, or even
+        #   * goo requires foo requires bar, where only foo and bar are dupes.
+        # If we kept those in removedupes, depsolving would pull the other
+        # packages into the removal transaction (removing a big chunk of a
+        # healthy system in some cases).
+        alldupes = set(removedupes)
+        while True:
+            # Perform dry depsolving to find depremoved (ie. removed for
+            # dependencies)
+            for po in removedupes:
+                self.remove(po)
+            self.resolveDeps()
+            self.tsInfo.makelists(True, True)
+            depremoved = self.tsInfo.depremoved
+            del self.tsInfo
+            if not depremoved:
+                # Woo-hoo, we're done!
+                break
+            # Subtract any deps of depremoved from removedupes
+            deps = set()
+            for txmbr in depremoved:
+                # We would normally use txmbr.depends_on here but there's a bug
+                # in yum depsolving* that puts wrong package versions in it
+                # when tsInfo itself contains dupes, so let's just find the
+                # installed dependencies manually.
+                # *see Depsolve._requiringFromInstalled()
+                deps |= depsof(txmbr)
+            if not (removedupes & deps):
+                # We have some depremoved but, strangely enough, none of the
+                # dupes have pulled them in, so bail out (shouldn't ever
+                # happen).
+                return alldupes
+            removedupes -= deps
+
+        # Mark the dupes for removal
         for po in removedupes:
             self.remove(po)
+
+        return alldupes - removedupes
 
 
     def _should_show_leaf(self, po, leaf_regex, exclude_devel, exclude_bin):
@@ -293,6 +342,20 @@ class PackageCleanup(YumUtilBase):
             self.remove(po)
 
 
+    def _warn_excluded(self, newest):
+        if newest:
+            suffix = 'out'
+        else:
+            suffix = ''
+        self.logger.warn(
+            'Warning: Some duplicates were not removed because they are '
+            'required by installed package(s).\n'
+            'You can try --cleandupes with%s --removenewestdupes, or review '
+            'them with --dupes and remove manually.'
+            % suffix
+        )
+
+
     def main(self):
         opts = self.doUtilConfigSetup()
         if not exactlyOne([opts.problems, opts.dupes, opts.leaves, opts.kernels,
@@ -380,7 +443,10 @@ class PackageCleanup(YumUtilBase):
                 sys.exit(1)
             if opts.noscripts:
                 self.conf.tsflags.append('noscripts')
-            self._remove_dupes(opts.removenewestdupes)
+            excluded = self._remove_dupes(opts.removenewestdupes)
+            for po in sorted(excluded):
+                print ('Not removing %s because it is required by installed '
+                       'package(s)' % po.hdr.sprintf(opts.qf))
             self.run_with_package_names.add('yum-utils')
 
             if hasattr(self, 'doUtilBuildTransaction'):
@@ -397,9 +463,14 @@ class PackageCleanup(YumUtilBase):
 
             if len(self.tsInfo) < 1:
                 print 'No duplicates to remove'
+                if excluded:
+                    self._warn_excluded(opts.removenewestdupes)
                 sys.exit(0)
                 
-            sys.exit(self.doUtilTransaction())
+            errc = self.doUtilTransaction()
+            if excluded:
+                self._warn_excluded(opts.removenewestdupes)
+            sys.exit(errc)
 
     
 if __name__ == '__main__':
