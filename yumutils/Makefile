@@ -1,4 +1,4 @@
-PYTHON=python
+PYTHON=/usr/bin/python2
 PACKAGE = $(shell basename `pwd`)
 PYFILES = $(wildcard *.py)
 PYVER := $(shell $(PYTHON) -c 'import sys; print "%.3s" %(sys.version)')

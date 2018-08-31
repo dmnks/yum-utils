@@ -4,7 +4,7 @@
 %define package_yum_updatesd 1
 %endif
 
-%{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
+%{!?python_sitelib: %define python_sitelib %(%{__python2} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %define pluginhome /usr/lib/yum-plugins
 
 Summary: Utilities based around the yum package manager
@@ -473,10 +473,10 @@ for plug in $plugins; do
     install -m 644 $plug/*.conf $RPM_BUILD_ROOT/%{_sysconfdir}/yum/pluginconf.d/
     install -m 644 $plug/*.py $RPM_BUILD_ROOT/%pluginhome
 done
-%{__python} -c "import compileall; compileall.compile_dir('$RPM_BUILD_ROOT/%pluginhome', 1)"
+%{__python2} -c "import compileall; compileall.compile_dir('$RPM_BUILD_ROOT/%pluginhome', 1)"
 install -m 644 pkgtorrent/server/pkgtorrent-service.conf $RPM_BUILD_ROOT/%{_sysconfdir}/httpd/conf.d/
 install -m 644 pkgtorrent/server/pkgtorrent-service.py $RPM_BUILD_ROOT/var/www/cgi-bin/
-%{__python} -c "import compileall; compileall.compile_dir('$RPM_BUILD_ROOT/var/www/cgi-bin', 1)"
+%{__python2} -c "import compileall; compileall.compile_dir('$RPM_BUILD_ROOT/var/www/cgi-bin', 1)"
 install -m 644 aliases/aliases $RPM_BUILD_ROOT/%{_sysconfdir}/yum/aliases.conf
 install -m 644 versionlock/versionlock.list $RPM_BUILD_ROOT/%{_sysconfdir}/yum/pluginconf.d/
 # need for for the ghost in files section of yum-plugin-local
